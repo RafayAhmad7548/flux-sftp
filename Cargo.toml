@@ -1,0 +1,9 @@
+[package]
+name = "flux-sftp"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+russh = "0.52.1"
+russh-sftp = "2.1.1"
+tokio = { version = "1.45.1", features = ["full"]  }

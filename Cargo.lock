@@ -534,6 +534,7 @@ dependencies = [
 name = "flux-sftp"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "russh",
  "russh-sftp",
  "tokio",

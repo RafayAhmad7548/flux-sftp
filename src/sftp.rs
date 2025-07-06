@@ -1,10 +1,10 @@
-use std::{collections::HashMap, io::SeekFrom, os::unix::fs::MetadataExt};
+use std::{collections::HashMap, io::{ErrorKind, SeekFrom}, os::unix::fs::MetadataExt};
 
 use chrono::{Local, TimeZone};
 use regex::Regex;
 use russh_sftp::{protocol::{Attrs, Data, File, FileAttributes, Handle as SftpHandle, Name, OpenFlags, Status, StatusCode}, server::Handler as SftpHandler};
 
-use tokio::{fs::{self, OpenOptions, ReadDir}, io::{AsyncReadExt, AsyncSeekExt}};
+use tokio::{fs::{self, OpenOptions, ReadDir}, io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt}};
 
 enum Handle {
     Dir(ReadDir),
@@ -83,7 +83,16 @@ impl SftpHandler for SftpSession {
                 self.handles.insert(filename.clone(), Handle::File(file));
                 Ok(SftpHandle { id, handle: filename })
             }
-            Err(_) => Err(StatusCode::NoSuchFile)   
+            Err(e) => {
+                println!("error opeing file: {}", e);
+                match e.kind() {
+                    ErrorKind::NotFound => Err(StatusCode::NoSuchFile),
+                    ErrorKind::PermissionDenied => Err(StatusCode::PermissionDenied),
+                    ErrorKind::ConnectionReset => Err(StatusCode::ConnectionLost),
+                    ErrorKind::NotConnected => Err(StatusCode::NoConnection),
+                    _ => Err(StatusCode::Failure)
+                }
+            }
         }
     }
 
@@ -121,7 +130,45 @@ impl SftpHandler for SftpSession {
             }
         }
         else {
-            Err(StatusCode::Ok)
+            println!("handle is not a filehandle");
+            Err(StatusCode::Failure)
+        }
+    }
+
+    async fn write(
+        &mut self,
+        id: u32,
+        handle: String,
+        offset: u64,
+        data: Vec<u8>,
+    ) -> Result<Status, Self::Error> {
+        if let Handle::File(file) = self.handles.get_mut(&handle).unwrap() {
+            match file.seek(SeekFrom::Start(offset)).await {
+                Ok(_) => {
+                    match file.write(&data).await {
+                        Ok(_) => {
+                            Ok(Status {
+                                id,
+                                status_code: StatusCode::Ok,
+                                error_message: "Ok".to_string(),
+                                language_tag: "en-US".to_string(),
+                            })
+                        }
+                        Err(e) => {
+                            println!("Error in writing at offset in file: {}", e);
+                            Ok(Status { id, status_code: StatusCode::Failure, error_message: e.to_string(), language_tag: "en-US".to_string() })
+                        }
+                    }   
+                }
+                Err(e) => {
+                    println!("Error in seeking offset in file: {}", e);
+                    Ok(Status { id, status_code: StatusCode::Failure, error_message: e.to_string(), language_tag: "en-US".to_string() })
+                }
+            }
+        }
+        else {
+            println!("handle is not a filehandle");
+            Err(StatusCode::Failure)
         }
     }
 

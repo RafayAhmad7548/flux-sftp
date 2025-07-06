@@ -209,13 +209,14 @@ impl SftpHandler for SftpSession {
                             longname: longname,
                             attrs: FileAttributes {
                                 size: Some(metadata.size()),
-                                uid: Some(metadata.uid()),
-                                user: None,
-                                gid: Some(metadata.gid()),
-                                group: None,
+                                // uid: Some(metadata.uid()),
+                                // user: None,
+                                // gid: Some(metadata.gid()),
+                                // group: None,
                                 permissions: Some(metadata.mode()),
                                 atime: Some(metadata.atime() as u32),
                                 mtime: Some(metadata.mtime() as u32),
+                                ..Default::default()
                             }
                         }
                     ] })
@@ -258,13 +259,14 @@ impl SftpHandler for SftpSession {
         match fs::metadata(path).await {
             Ok(metadata) => Ok(Attrs { id, attrs: FileAttributes {
                 size: Some(metadata.size()),
-                uid: Some(metadata.uid()),
-                user: None,
-                gid: Some(metadata.gid()),
-                group: None,
+                // uid: Some(metadata.uid()),
+                // user: None,
+                // gid: Some(metadata.gid()),
+                // group: None,
                 permissions: Some(metadata.mode()),
                 atime: Some(metadata.atime() as u32),
                 mtime: Some(metadata.mtime() as u32),
+                ..Default::default()
             }}),
             Err(_) => Err(StatusCode::NoSuchFile)
         }
@@ -280,13 +282,14 @@ impl SftpHandler for SftpSession {
         match fs::symlink_metadata(path).await {
             Ok(metadata) => Ok(Attrs { id, attrs: FileAttributes {
                 size: Some(metadata.size()),
-                uid: Some(metadata.uid()),
-                user: None,
-                gid: Some(metadata.gid()),
-                group: None,
+                // uid: Some(metadata.uid()),
+                // user: None,
+                // gid: Some(metadata.gid()),
+                // group: None,
                 permissions: Some(metadata.mode()),
                 atime: Some(metadata.atime() as u32),
-                mtime: Some(metadata.mtime() as u32) 
+                mtime: Some(metadata.mtime() as u32),
+                ..Default::default()
             }}),
             Err(_) => Err(StatusCode::OpUnsupported)
         }
@@ -300,6 +303,73 @@ impl SftpHandler for SftpSession {
     ) -> Result<Attrs, Self::Error> {
         println!("fstat called");
         self.stat(id, handle).await
+    }
+
+    async fn remove(
+        &mut self,
+        id: u32,
+        filename: String,
+    ) -> Result<Status, Self::Error> {
+        println!("remove called: {}", filename);
+        let filename = format!("{}/{}", self.jail_dir, filename);
+        match fs::remove_file(filename).await {
+            Ok(()) => Ok(Status { id, status_code: StatusCode::Ok, error_message: "Ok".to_string(), language_tag: "en-US".to_string() }),
+            Err(e) => {
+                println!("error removing file: {}", e);
+                match e.kind() {
+                    ErrorKind::NotFound => Ok(Status { id, status_code: StatusCode::NoSuchFile, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    ErrorKind::PermissionDenied => Ok(Status { id, status_code: StatusCode::PermissionDenied, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    ErrorKind::ConnectionReset => Ok(Status { id, status_code: StatusCode::ConnectionLost, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    ErrorKind::NotConnected => Ok(Status { id, status_code: StatusCode::NoConnection, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    _ => Ok(Status { id, status_code: StatusCode::Failure, error_message: e.to_string(), language_tag: "en-US".to_string() })
+                }
+            }
+        }
+    }
+
+    async fn mkdir(
+        &mut self,
+        id: u32,
+        path: String,
+        _attrs: FileAttributes,
+    ) -> Result<Status, Self::Error> {
+        println!("mkdir called: {}", path);
+        let path = format!("{}/{}", self.jail_dir, path);
+        match   fs::create_dir(&path).await {
+            Ok(()) => Ok(Status { id, status_code: StatusCode::Ok, error_message: "Ok".to_string(), language_tag: "en-US".to_string() }),
+            Err(e) => {
+                println!("error removing file: {}", e);
+                match e.kind() {
+                    ErrorKind::PermissionDenied => Ok(Status { id, status_code: StatusCode::PermissionDenied, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    ErrorKind::ConnectionReset => Ok(Status { id, status_code: StatusCode::ConnectionLost, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    ErrorKind::NotConnected => Ok(Status { id, status_code: StatusCode::NoConnection, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    _ => Ok(Status { id, status_code: StatusCode::Failure, error_message: e.to_string(), language_tag: "en-US".to_string() })
+                }
+            }
+        }
+
+    }
+
+    async fn rmdir(
+        &mut self,
+        id: u32,
+        path: String,
+    ) -> Result<Status, Self::Error> {
+        println!("rmdir called: {}", path);
+        let path = format!("{}/{}", self.jail_dir, path);
+        match fs::remove_dir(path).await {
+            Ok(()) => Ok(Status { id, status_code: StatusCode::Ok, error_message: "Ok".to_string(), language_tag: "en-US".to_string() }),
+            Err(e) => {
+                println!("error removing file: {}", e);
+                match e.kind() {
+                    ErrorKind::NotFound => Ok(Status { id, status_code: StatusCode::NoSuchFile, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    ErrorKind::PermissionDenied => Ok(Status { id, status_code: StatusCode::PermissionDenied, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    ErrorKind::ConnectionReset => Ok(Status { id, status_code: StatusCode::ConnectionLost, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    ErrorKind::NotConnected => Ok(Status { id, status_code: StatusCode::NoConnection, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    _ => Ok(Status { id, status_code: StatusCode::Failure, error_message: e.to_string(), language_tag: "en-US".to_string() })
+                }
+            }
+        }
     }
 
 }

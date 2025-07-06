@@ -177,7 +177,7 @@ impl SftpHandler for SftpSession {
         id: u32,
         path: String,
     ) -> Result<SftpHandle, Self::Error> {
-        println!("opendir called");
+        println!("opendir called: {}", path);
         let path = format!("{}/{}", self.jail_dir, path);
         match fs::read_dir(&path).await {
             Ok(entries) => {
@@ -209,9 +209,13 @@ impl SftpHandler for SftpSession {
                             longname: longname,
                             attrs: FileAttributes {
                                 size: Some(metadata.size()),
+                                uid: Some(metadata.uid()),
+                                user: None,
+                                gid: Some(metadata.gid()),
+                                group: None,
+                                permissions: Some(metadata.mode()),
                                 atime: Some(metadata.atime() as u32),
                                 mtime: Some(metadata.mtime() as u32),
-                                ..Default::default()
                             }
                         }
                     ] })
@@ -249,7 +253,7 @@ impl SftpHandler for SftpSession {
         id: u32,
         path: String,
     ) -> Result<Attrs, Self::Error> {
-        println!("stat called");
+        println!("stat called: {}", path);
         let path = format!("{}/{}", self.jail_dir, path);
         match fs::metadata(path).await {
             Ok(metadata) => Ok(Attrs { id, attrs: FileAttributes {
@@ -261,7 +265,6 @@ impl SftpHandler for SftpSession {
                 permissions: Some(metadata.mode()),
                 atime: Some(metadata.atime() as u32),
                 mtime: Some(metadata.mtime() as u32),
-                ..Default::default()
             }}),
             Err(_) => Err(StatusCode::NoSuchFile)
         }
@@ -272,7 +275,7 @@ impl SftpHandler for SftpSession {
         id: u32,
         path: String,
     ) -> Result<Attrs, Self::Error> {
-        println!("lstat called");
+        println!("lstat called: {}", path);
         let path = format!("{}/{}", self.jail_dir, path);
         match fs::symlink_metadata(path).await {
             Ok(metadata) => Ok(Attrs { id, attrs: FileAttributes {

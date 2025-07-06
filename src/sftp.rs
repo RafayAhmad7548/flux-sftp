@@ -6,6 +6,24 @@ use russh_sftp::{protocol::{Attrs, Data, File, FileAttributes, Handle as SftpHan
 
 use tokio::{fs::{self, OpenOptions, ReadDir}, io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt}};
 
+macro_rules! match_expr {
+    ($match:expr, $err_msg:literal, $id:ident) => {
+        match $match {
+            Ok(()) => Ok(Status { $id, status_code: StatusCode::Ok, error_message: "Ok".to_string(), language_tag: "en-US".to_string() }),
+            Err(e) => {
+                println!($err_msg, e);
+                match e.kind() {
+                    ErrorKind::NotFound => Ok(Status { $id, status_code: StatusCode::NoSuchFile, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    ErrorKind::PermissionDenied => Ok(Status { $id, status_code: StatusCode::PermissionDenied, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    ErrorKind::ConnectionReset => Ok(Status { $id, status_code: StatusCode::ConnectionLost, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    ErrorKind::NotConnected => Ok(Status { $id, status_code: StatusCode::NoConnection, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    _ => Ok(Status { $id, status_code: StatusCode::Failure, error_message: e.to_string(), language_tag: "en-US".to_string() })
+                }
+            }
+        }
+    };
+}
+
 enum Handle {
     Dir(ReadDir),
     File(fs::File)
@@ -206,10 +224,6 @@ impl SftpHandler for SftpSession {
                             longname: longname,
                             attrs: FileAttributes {
                                 size: Some(metadata.size()),
-                                // uid: Some(metadata.uid()),
-                                // user: None,
-                                // gid: Some(metadata.gid()),
-                                // group: None,
                                 permissions: Some(metadata.mode()),
                                 atime: Some(metadata.atime() as u32),
                                 mtime: Some(metadata.mtime() as u32),
@@ -256,10 +270,6 @@ impl SftpHandler for SftpSession {
         match fs::metadata(path).await {
             Ok(metadata) => Ok(Attrs { id, attrs: FileAttributes {
                 size: Some(metadata.size()),
-                // uid: Some(metadata.uid()),
-                // user: None,
-                // gid: Some(metadata.gid()),
-                // group: None,
                 permissions: Some(metadata.mode()),
                 atime: Some(metadata.atime() as u32),
                 mtime: Some(metadata.mtime() as u32),
@@ -279,10 +289,6 @@ impl SftpHandler for SftpSession {
         match fs::symlink_metadata(path).await {
             Ok(metadata) => Ok(Attrs { id, attrs: FileAttributes {
                 size: Some(metadata.size()),
-                // uid: Some(metadata.uid()),
-                // user: None,
-                // gid: Some(metadata.gid()),
-                // group: None,
                 permissions: Some(metadata.mode()),
                 atime: Some(metadata.atime() as u32),
                 mtime: Some(metadata.mtime() as u32),
@@ -322,20 +328,8 @@ impl SftpHandler for SftpSession {
         filename: String,
     ) -> Result<Status, Self::Error> {
         println!("remove called: {}", filename);
-        let filename = format!("{}{}", self.jail_dir, filename);
-        match fs::remove_file(filename).await {
-            Ok(()) => Ok(Status { id, status_code: StatusCode::Ok, error_message: "Ok".to_string(), language_tag: "en-US".to_string() }),
-            Err(e) => {
-                println!("error removing file: {}", e);
-                match e.kind() {
-                    ErrorKind::NotFound => Ok(Status { id, status_code: StatusCode::NoSuchFile, error_message: e.to_string(), language_tag: "en-US".to_string() }),
-                    ErrorKind::PermissionDenied => Ok(Status { id, status_code: StatusCode::PermissionDenied, error_message: e.to_string(), language_tag: "en-US".to_string() }),
-                    ErrorKind::ConnectionReset => Ok(Status { id, status_code: StatusCode::ConnectionLost, error_message: e.to_string(), language_tag: "en-US".to_string() }),
-                    ErrorKind::NotConnected => Ok(Status { id, status_code: StatusCode::NoConnection, error_message: e.to_string(), language_tag: "en-US".to_string() }),
-                    _ => Ok(Status { id, status_code: StatusCode::Failure, error_message: e.to_string(), language_tag: "en-US".to_string() })
-                }
-            }
-        }
+        let path = format!("{}{}", self.jail_dir, filename);
+        match_expr!(fs::remove_file(path).await, "error removing file: {}", id)
     }
 
     async fn mkdir(
@@ -346,19 +340,7 @@ impl SftpHandler for SftpSession {
     ) -> Result<Status, Self::Error> {
         println!("mkdir called: {}", path);
         let path = format!("{}{}", self.jail_dir, path);
-        match   fs::create_dir(&path).await {
-            Ok(()) => Ok(Status { id, status_code: StatusCode::Ok, error_message: "Ok".to_string(), language_tag: "en-US".to_string() }),
-            Err(e) => {
-                println!("error removing file: {}", e);
-                match e.kind() {
-                    ErrorKind::PermissionDenied => Ok(Status { id, status_code: StatusCode::PermissionDenied, error_message: e.to_string(), language_tag: "en-US".to_string() }),
-                    ErrorKind::ConnectionReset => Ok(Status { id, status_code: StatusCode::ConnectionLost, error_message: e.to_string(), language_tag: "en-US".to_string() }),
-                    ErrorKind::NotConnected => Ok(Status { id, status_code: StatusCode::NoConnection, error_message: e.to_string(), language_tag: "en-US".to_string() }),
-                    _ => Ok(Status { id, status_code: StatusCode::Failure, error_message: e.to_string(), language_tag: "en-US".to_string() })
-                }
-            }
-        }
-
+        match_expr!(fs::create_dir(path).await, "error creating dir: {}", id)
     }
 
     async fn rmdir(
@@ -368,19 +350,7 @@ impl SftpHandler for SftpSession {
     ) -> Result<Status, Self::Error> {
         println!("rmdir called: {}", path);
         let path = format!("{}{}", self.jail_dir, path);
-        match fs::remove_dir(path).await {
-            Ok(()) => Ok(Status { id, status_code: StatusCode::Ok, error_message: "Ok".to_string(), language_tag: "en-US".to_string() }),
-            Err(e) => {
-                println!("error removing file: {}", e);
-                match e.kind() {
-                    ErrorKind::NotFound => Ok(Status { id, status_code: StatusCode::NoSuchFile, error_message: e.to_string(), language_tag: "en-US".to_string() }),
-                    ErrorKind::PermissionDenied => Ok(Status { id, status_code: StatusCode::PermissionDenied, error_message: e.to_string(), language_tag: "en-US".to_string() }),
-                    ErrorKind::ConnectionReset => Ok(Status { id, status_code: StatusCode::ConnectionLost, error_message: e.to_string(), language_tag: "en-US".to_string() }),
-                    ErrorKind::NotConnected => Ok(Status { id, status_code: StatusCode::NoConnection, error_message: e.to_string(), language_tag: "en-US".to_string() }),
-                    _ => Ok(Status { id, status_code: StatusCode::Failure, error_message: e.to_string(), language_tag: "en-US".to_string() })
-                }
-            }
-        }
+        match_expr!(fs::remove_dir(path).await, "error removing file: {}", id)
     }
 
     async fn rename(
@@ -392,20 +362,7 @@ impl SftpHandler for SftpSession {
         println!("rename called from: {}, to: {}", oldpath, newpath);
         let oldpath = format!("{}{}", self.jail_dir, oldpath);
         let newpath = format!("{}{}", self.jail_dir, newpath);
-
-        match fs::rename(oldpath, newpath).await {
-            Ok(()) => Ok(Status { id, status_code: StatusCode::Ok, error_message: "Ok".to_string(), language_tag: "en-US".to_string() }),
-            Err(e) => {
-                println!("error removing file: {}", e);
-                match e.kind() {
-                    ErrorKind::NotFound => Ok(Status { id, status_code: StatusCode::NoSuchFile, error_message: e.to_string(), language_tag: "en-US".to_string() }),
-                    ErrorKind::PermissionDenied => Ok(Status { id, status_code: StatusCode::PermissionDenied, error_message: e.to_string(), language_tag: "en-US".to_string() }),
-                    ErrorKind::ConnectionReset => Ok(Status { id, status_code: StatusCode::ConnectionLost, error_message: e.to_string(), language_tag: "en-US".to_string() }),
-                    ErrorKind::NotConnected => Ok(Status { id, status_code: StatusCode::NoConnection, error_message: e.to_string(), language_tag: "en-US".to_string() }),
-                    _ => Ok(Status { id, status_code: StatusCode::Failure, error_message: e.to_string(), language_tag: "en-US".to_string() })
-                }
-            }
-        }
+        match_expr!(fs::rename(oldpath, newpath).await, "error renaming file: {}", id)
     }
 
 }

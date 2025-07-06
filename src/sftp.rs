@@ -61,7 +61,12 @@ impl SftpHandler for SftpSession {
         _attrs: FileAttributes,
     ) -> Result<SftpHandle, Self::Error> {
         println!("open called, path: {}", filename);
-        let filename = format!("{}/{}", self.jail_dir, filename);
+        println!("pflags raw: {:b}", pflags.bits());
+        println!("pflags: read: {}, write: {}, append: {}, create: {}, truncate: {}", pflags.contains(OpenFlags::READ), pflags.contains(OpenFlags::WRITE), pflags.contains(OpenFlags::APPEND), pflags.contains(OpenFlags::CREATE), pflags.contains(OpenFlags::TRUNCATE));
+        let path = format!("{}{}", self.jail_dir, filename);
+        if pflags.contains(OpenFlags::EXCLUDE) && fs::metadata(&path).await.is_ok() {
+            return Err(StatusCode::Failure)
+        }
         let mut options = OpenOptions::new();
             options
             .read(pflags.contains(OpenFlags::READ))
@@ -69,7 +74,7 @@ impl SftpHandler for SftpSession {
             .append(pflags.contains(OpenFlags::APPEND))
             .create(pflags.contains(OpenFlags::CREATE))
             .truncate(pflags.contains(OpenFlags::TRUNCATE));
-        match options.open(&filename).await {
+        match options.open(&path).await {
             Ok(file) =>  {
                 self.handles.insert(filename.clone(), Handle::File(file));
                 Ok(SftpHandle { id, handle: filename })
@@ -133,8 +138,8 @@ impl SftpHandler for SftpSession {
         offset: u64,
         data: Vec<u8>,
     ) -> Result<Status, Self::Error> {
+        println!("write called, offset: {}, data: {:?}", offset, String::from_utf8(data.clone()));
         if let Handle::File(file) = self.handles.get_mut(&handle).unwrap() {
-            
             match file.seek(SeekFrom::Start(offset)).await {
                 Ok(_) => {
                     match file.write_all(&data).await {
@@ -170,7 +175,7 @@ impl SftpHandler for SftpSession {
         path: String,
     ) -> Result<SftpHandle, Self::Error> {
         println!("opendir called: {}", path);
-        let path = format!("{}/{}", self.jail_dir, path);
+        let path = format!("{}{}", self.jail_dir, path);
         match fs::read_dir(&path).await {
             Ok(entries) => {
                 self.handles.insert(path.clone(), Handle::Dir(entries));
@@ -247,7 +252,7 @@ impl SftpHandler for SftpSession {
         path: String,
     ) -> Result<Attrs, Self::Error> {
         println!("stat called: {}", path);
-        let path = format!("{}/{}", self.jail_dir, path);
+        let path = format!("{}{}", self.jail_dir, path);
         match fs::metadata(path).await {
             Ok(metadata) => Ok(Attrs { id, attrs: FileAttributes {
                 size: Some(metadata.size()),
@@ -270,7 +275,7 @@ impl SftpHandler for SftpSession {
         path: String,
     ) -> Result<Attrs, Self::Error> {
         println!("lstat called: {}", path);
-        let path = format!("{}/{}", self.jail_dir, path);
+        let path = format!("{}{}", self.jail_dir, path);
         match fs::symlink_metadata(path).await {
             Ok(metadata) => Ok(Attrs { id, attrs: FileAttributes {
                 size: Some(metadata.size()),
@@ -293,8 +298,22 @@ impl SftpHandler for SftpSession {
         id: u32,
         handle: String,
     ) -> Result<Attrs, Self::Error> {
-        println!("fstat called");
-        self.stat(id, handle).await
+        println!("fstat called: {}", handle);
+        if let Handle::File(file) = self.handles.get(&handle).unwrap() {
+            let metadata = file.metadata().await.unwrap();
+            Ok(Attrs { id, attrs: FileAttributes {
+                size: Some(metadata.size()),
+                permissions: Some(metadata.mode()),
+                atime: Some(metadata.atime() as u32),
+                mtime: Some(metadata.mtime() as u32),
+                ..Default::default()
+            }})
+        }
+        else {
+            println!("handle is not a filehandle");
+            Err(StatusCode::Failure)
+        }
+        
     }
 
     async fn remove(
@@ -303,7 +322,7 @@ impl SftpHandler for SftpSession {
         filename: String,
     ) -> Result<Status, Self::Error> {
         println!("remove called: {}", filename);
-        let filename = format!("{}/{}", self.jail_dir, filename);
+        let filename = format!("{}{}", self.jail_dir, filename);
         match fs::remove_file(filename).await {
             Ok(()) => Ok(Status { id, status_code: StatusCode::Ok, error_message: "Ok".to_string(), language_tag: "en-US".to_string() }),
             Err(e) => {
@@ -326,7 +345,7 @@ impl SftpHandler for SftpSession {
         _attrs: FileAttributes,
     ) -> Result<Status, Self::Error> {
         println!("mkdir called: {}", path);
-        let path = format!("{}/{}", self.jail_dir, path);
+        let path = format!("{}{}", self.jail_dir, path);
         match   fs::create_dir(&path).await {
             Ok(()) => Ok(Status { id, status_code: StatusCode::Ok, error_message: "Ok".to_string(), language_tag: "en-US".to_string() }),
             Err(e) => {
@@ -348,7 +367,7 @@ impl SftpHandler for SftpSession {
         path: String,
     ) -> Result<Status, Self::Error> {
         println!("rmdir called: {}", path);
-        let path = format!("{}/{}", self.jail_dir, path);
+        let path = format!("{}{}", self.jail_dir, path);
         match fs::remove_dir(path).await {
             Ok(()) => Ok(Status { id, status_code: StatusCode::Ok, error_message: "Ok".to_string(), language_tag: "en-US".to_string() }),
             Err(e) => {
@@ -371,8 +390,8 @@ impl SftpHandler for SftpSession {
         newpath: String,
     ) -> Result<Status, Self::Error> {
         println!("rename called from: {}, to: {}", oldpath, newpath);
-        let oldpath = format!("{}/{}", self.jail_dir, oldpath);
-        let newpath = format!("{}/{}", self.jail_dir, newpath);
+        let oldpath = format!("{}{}", self.jail_dir, oldpath);
+        let newpath = format!("{}{}", self.jail_dir, newpath);
 
         match fs::rename(oldpath, newpath).await {
             Ok(()) => Ok(Status { id, status_code: StatusCode::Ok, error_message: "Ok".to_string(), language_tag: "en-US".to_string() }),

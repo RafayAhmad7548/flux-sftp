@@ -63,21 +63,12 @@ impl SftpHandler for SftpSession {
         println!("open called, path: {}", filename);
         let filename = format!("{}/{}", self.jail_dir, filename);
         let mut options = OpenOptions::new();
-        if pflags.contains(OpenFlags::READ){
-            options.read(true);
-        }
-        if pflags.contains(OpenFlags::WRITE){
-            options.write(true);
-        }
-        if pflags.contains(OpenFlags::APPEND){
-            options.append(true);
-        }
-        if pflags.contains(OpenFlags::CREATE){
-            options.create(true);
-        }
-        if pflags.contains(OpenFlags::TRUNCATE){
-            options.truncate(true);
-        }
+            options
+            .read(pflags.contains(OpenFlags::READ))
+            .write(pflags.contains(OpenFlags::WRITE))
+            .append(pflags.contains(OpenFlags::APPEND))
+            .create(pflags.contains(OpenFlags::CREATE))
+            .truncate(pflags.contains(OpenFlags::TRUNCATE));
         match options.open(&filename).await {
             Ok(file) =>  {
                 self.handles.insert(filename.clone(), Handle::File(file));
@@ -143,10 +134,11 @@ impl SftpHandler for SftpSession {
         data: Vec<u8>,
     ) -> Result<Status, Self::Error> {
         if let Handle::File(file) = self.handles.get_mut(&handle).unwrap() {
+            
             match file.seek(SeekFrom::Start(offset)).await {
                 Ok(_) => {
-                    match file.write(&data).await {
-                        Ok(_) => {
+                    match file.write_all(&data).await {
+                        Ok(()) => {
                             Ok(Status {
                                 id,
                                 status_code: StatusCode::Ok,
@@ -358,6 +350,31 @@ impl SftpHandler for SftpSession {
         println!("rmdir called: {}", path);
         let path = format!("{}/{}", self.jail_dir, path);
         match fs::remove_dir(path).await {
+            Ok(()) => Ok(Status { id, status_code: StatusCode::Ok, error_message: "Ok".to_string(), language_tag: "en-US".to_string() }),
+            Err(e) => {
+                println!("error removing file: {}", e);
+                match e.kind() {
+                    ErrorKind::NotFound => Ok(Status { id, status_code: StatusCode::NoSuchFile, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    ErrorKind::PermissionDenied => Ok(Status { id, status_code: StatusCode::PermissionDenied, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    ErrorKind::ConnectionReset => Ok(Status { id, status_code: StatusCode::ConnectionLost, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    ErrorKind::NotConnected => Ok(Status { id, status_code: StatusCode::NoConnection, error_message: e.to_string(), language_tag: "en-US".to_string() }),
+                    _ => Ok(Status { id, status_code: StatusCode::Failure, error_message: e.to_string(), language_tag: "en-US".to_string() })
+                }
+            }
+        }
+    }
+
+    async fn rename(
+        &mut self,
+        id: u32,
+        oldpath: String,
+        newpath: String,
+    ) -> Result<Status, Self::Error> {
+        println!("rename called from: {}, to: {}", oldpath, newpath);
+        let oldpath = format!("{}/{}", self.jail_dir, oldpath);
+        let newpath = format!("{}/{}", self.jail_dir, newpath);
+
+        match fs::rename(oldpath, newpath).await {
             Ok(()) => Ok(Status { id, status_code: StatusCode::Ok, error_message: "Ok".to_string(), language_tag: "en-US".to_string() }),
             Err(e) => {
                 println!("error removing file: {}", e);

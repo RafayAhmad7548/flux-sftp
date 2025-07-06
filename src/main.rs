@@ -67,7 +67,7 @@ impl SshHandler for SshSession {
     ) -> Result<(), Self::Error> {
         if name == "sftp" {
             session.channel_success(channel_id)?;
-            let jail_dir = format!("/srv/sftp/{}", self.user.take().unwrap());
+            let jail_dir = format!("/srv/sftp/{}", self.user.as_ref().unwrap());
             let sftp_handler = SftpSession::new(jail_dir);
             russh_sftp::server::run(self.channel.take().ok_or(Self::Error::WrongChannel)?.into_stream(), sftp_handler).await;
         }

@@ -2,21 +2,26 @@ mod sftp;
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 use russh::{keys::ssh_key::{rand_core::OsRng, PublicKey}, server::{Auth, Handler as SshHandler, Msg, Server, Session}, Channel, ChannelId};
 use sftp::SftpSession;
+use sqlx::{sqlite::SqlitePoolOptions, Pool, Row, Sqlite};
 
 
-struct SftpServer;
+struct SftpServer {
+    pool: Arc<Pool<Sqlite>>
+}
 
 impl Server for SftpServer {
     type Handler = SshSession;
 
     fn new_client(&mut self, _peer_addr: Option<SocketAddr>) -> Self::Handler {
-        SshSession{ channel: None, user: None }
+        let session_pool = self.pool.clone();
+        SshSession { channel: None, user: None, pool: session_pool }
     }
 }
 
 struct SshSession {
     channel: Option<Channel<Msg>>,
-    user: Option<String>
+    user: Option<String>,
+    pool: Arc<Pool<Sqlite>>
 }
 
 impl SshHandler for SshSession {
@@ -27,18 +32,35 @@ impl SshHandler for SshSession {
         user: &str,
         public_key: &PublicKey,
     ) -> Result<Auth, Self::Error> {
-        let _ = public_key;
         self.user = Some(user.to_string());
-        Ok(Auth::Accept)
+
+        let row_res = sqlx::query("SELECT * FROM users WHERE username = ?")
+            .bind(user)
+            .fetch_one(&*self.pool).await;
+        
+        match row_res {
+            Ok(row) => {
+                let stored_key: String = row.get("public_key");
+                let offered_key = public_key.to_string();
+                if stored_key == offered_key {
+                    Ok(Auth::Accept)
+                }
+                else {
+                    Ok(Auth::reject())
+                }
+            }
+            Err(e) => {
+                println!("User Not found: {}", e);
+                Ok(Auth::reject())
+            }
+        }
     }
 
     async fn auth_publickey(
         &mut self,
-        user: &str,
-        public_key: &PublicKey,
+        _user: &str,
+        _public_key: &PublicKey,
     ) -> Result<Auth, Self::Error> {
-        let _ = user;
-        let _ = public_key;
         Ok(Auth::Accept)
     }
 
@@ -80,7 +102,12 @@ impl SshHandler for SshSession {
 
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), sqlx::Error> {
+    
+    let pool = SqlitePoolOptions::new()
+        .max_connections(3)
+        .connect("sqlite:/home/rafayahmad/Stuff/Coding/Rust/flux-sftp/auth.db").await?;
+    let mut server = SftpServer { pool: Arc::new(pool) };
 
     let config = russh::server::Config {
         auth_rejection_time: Duration::from_secs(3),
@@ -90,7 +117,7 @@ async fn main() {
         ],
         ..Default::default()
     };
-    let mut server = SftpServer;
 
     server.run_on_address(Arc::new(config), ("0.0.0.0", 2222)).await.unwrap();
+    Ok(())
 }

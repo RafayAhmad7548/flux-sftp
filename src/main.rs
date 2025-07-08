@@ -1,9 +1,12 @@
 mod sftp;
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+mod config;
+
+use std::{io::ErrorKind, net::SocketAddr, sync::Arc, time::Duration};
+use config::Config;
 use russh::{keys::ssh_key::{rand_core::OsRng, PublicKey}, server::{Auth, Handler as SshHandler, Msg, Server, Session}, Channel, ChannelId};
 use sftp::SftpSession;
 use sqlx::{sqlite::SqlitePoolOptions, Pool, Row, Sqlite};
-
+use tokio::fs;
 
 struct SftpServer {
     pool: Arc<Pool<Sqlite>>
@@ -101,15 +104,45 @@ impl SshHandler for SshSession {
 }
 
 
+
 #[tokio::main]
 async fn main() -> Result<(), sqlx::Error> {
+
+    const CONFIG_PATH: &str = "/etc/flux-sftp/config.toml";
+    let config: Config;
+    match fs::read_to_string(CONFIG_PATH).await {
+        Ok(toml) => {
+            match toml::from_str::<Config>(&toml) {
+                Ok(c) => config = c,
+                Err(e) => {
+                    println!("error parsing config file: {}\n please make sure config file is valid", e);
+                    return Ok(())
+                }
+            }
+
+        }
+        Err(e) => {
+            match e.kind() {
+                ErrorKind::NotFound => println!("config file not found, please ensure config file is present at: {}", CONFIG_PATH),
+                _ => println!("error occured reading config file: {}", e)
+            }
+            return Ok(())
+        }
+    }
+
+    // let url = match &config.database {
+    //     DBConfig::Sqlite { path } => format!("sqlite:{}", path),
+    //     DBConfig::Postgres { host, port, user, password, dbname }  => format!("postgres://{}:{}@{}:{}/{}", user, password, host, port, dbname),
+    //     DBConfig::Mysql { host, port, user, password, dbname } => format!("mysql://{}:{}@{}:{}/{}", user, password, host, port, dbname),
+    // };
+
     
     let pool = SqlitePoolOptions::new()
         .max_connections(3)
         .connect("sqlite:/home/rafayahmad/Stuff/Coding/Rust/flux-sftp/auth.db").await?;
     let mut server = SftpServer { pool: Arc::new(pool) };
 
-    let config = russh::server::Config {
+    let russh_config = russh::server::Config {
         auth_rejection_time: Duration::from_secs(3),
         auth_rejection_time_initial: Some(Duration::from_secs(0)),
         keys: vec![
@@ -118,6 +151,6 @@ async fn main() -> Result<(), sqlx::Error> {
         ..Default::default()
     };
 
-    server.run_on_address(Arc::new(config), ("0.0.0.0", 2222)).await.unwrap();
+    server.run_on_address(Arc::new(russh_config), (config.general.listen_address, config.general.port)).await.unwrap();
     Ok(())
 }

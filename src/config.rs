@@ -1,18 +1,19 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct Config {
     pub(crate) general: GeneralConfig,
     pub(crate) database: DBConfig
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct GeneralConfig {
     pub(crate) listen_address: String,
     pub(crate) port: u16,
+    pub(crate) jail_dir: String
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(tag = "driver")]
 pub(crate) enum DBConfig {
     #[serde(rename = "sqlite")]
@@ -43,7 +44,8 @@ impl Default for Config {
         Config {
             general: GeneralConfig {
                 listen_address: String::from("0.0.0.0"),
-                port: 2222
+                port: 2222,
+                jail_dir: String::from("/srv/sftp")
             },
             database: DBConfig::Sqlite {
                 path: String::from("/var/lib/flux-sftp/auth.db")

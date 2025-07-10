@@ -28,6 +28,16 @@ sudo chown -R fluxsftp:fluxsftp /srv/sftp
 
 ***When you register a new user make sure to create a directory for them in the jail directory and make sure it is owned by the fluxsftp user***
 
+## Server Key
+generate a key for the server as follows
+```bash
+sudo ssh-keygen -t ed25519 -f /etc/flux-sftp/server_key
+```
+also make sure that the server's private key is owned by fluxsftp
+```bash
+sudo chown fluxsftp:fluxsftp /etc/flux-sftp/server_key
+```
+
 ## Enable and Start
 after you have configured the database you can start the server as follows
 ```bash
@@ -46,7 +56,7 @@ The configuration file is located at `/etc/flux-sftp/config.toml`, here is the d
 listen_address = "0.0.0.0"
 port = 2222
 jail_dir = "/srv/sftp"
-private_key_file = "~/.ssh/flux-sftp"
+private_key_file = "/etc/flux-sftp/server_key"
 
 [database]
 driver = "sqlite"

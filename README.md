@@ -26,7 +26,7 @@ this user needs to own the jail directory, make sure to change ownership of the 
 sudo chown -R fluxsftp:fluxsftp /srv/sftp
 ```
 
-***When u register a new user make sure to create a directory for them in the jail directory and make sure it is owned by the fluxsftp user***
+***When you register a new user make sure to create a directory for them in the jail directory and make sure it is owned by the fluxsftp user***
 
 ## Enable and Start
 after you have configured the database you can start the server as follows

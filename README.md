@@ -6,7 +6,24 @@ FluxSFTP is a regular SFTP server with the following additions:
 SQLite, PostgreSQL and MYSQL are supported for the database, Authentication can be done either via public key or password, password authentication uses bcrypt hashing with the default cost i.e. 12
 
 # Installation
+Start by downloading the tarball from the latest release from the [releases](https://forgejo.fluxgrid.pk/RafayAhmad/flux-sftp/releases), then extract the tarball as follows
+```bash
+tar -xzvf flux-sftp.tar.gz -C /
+```
+## Database
+before you can run the server you need to setup a database, SQLite, PostgreSQL and MYSQL are supported. get a database server running or simply create a sqlite database file and configure the server as mentioned in the [configuration section](#configuration).
+the database table should have a username field, and optionally public key and password for authentication, you can use either one authentication type or both, up to you. the public key field should not store the comment of the public key in the database, and for the passoword it should be hashed using bcrypt with default cost of 12.
+***Note that registering users must be done manually by inserting records into the database as of now.***
 
+## Enable and Start
+after you have configured the database you can start the server as follows
+```bash
+sudo systemctl start flux-sftp
+```
+and if you want enable on startup
+```bash
+sudo systemctl enable flux-sftp
+```
 
 # Configuration
 The configuration file is located at `/etc/flux-sftp/config.toml`, here is the default configuration:

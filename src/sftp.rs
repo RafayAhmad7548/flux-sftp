@@ -53,7 +53,6 @@ impl SftpHandler for SftpSession {
         id: u32,
         path: String,
     ) -> Result<Name, Self::Error> {
-        println!("realpath called, path: {}", path);
 
         let re_1 = Regex::new(r"/[^/]+/\.\.").unwrap();
         self.cwd = re_1.replace_all(&path, "").to_string();
@@ -78,9 +77,6 @@ impl SftpHandler for SftpSession {
         pflags: OpenFlags,
         _attrs: FileAttributes,
     ) -> Result<SftpHandle, Self::Error> {
-        println!("open called, path: {}", filename);
-        println!("pflags raw: {:b}", pflags.bits());
-        println!("pflags: read: {}, write: {}, append: {}, create: {}, truncate: {}", pflags.contains(OpenFlags::READ), pflags.contains(OpenFlags::WRITE), pflags.contains(OpenFlags::APPEND), pflags.contains(OpenFlags::CREATE), pflags.contains(OpenFlags::TRUNCATE));
         let path = format!("{}{}", self.jail_dir, filename);
         if pflags.contains(OpenFlags::EXCLUDE) && fs::metadata(&path).await.is_ok() {
             return Err(StatusCode::Failure)
@@ -156,7 +152,6 @@ impl SftpHandler for SftpSession {
         offset: u64,
         data: Vec<u8>,
     ) -> Result<Status, Self::Error> {
-        println!("write called, offset: {}, data: {:?}", offset, String::from_utf8(data.clone()));
         if let Handle::File(file) = self.handles.get_mut(&handle).unwrap() {
             match file.seek(SeekFrom::Start(offset)).await {
                 Ok(_) => {
@@ -192,7 +187,6 @@ impl SftpHandler for SftpSession {
         id: u32,
         path: String,
     ) -> Result<SftpHandle, Self::Error> {
-        println!("opendir called: {}", path);
         let path = format!("{}{}", self.jail_dir, path);
         match fs::read_dir(&path).await {
             Ok(entries) => {
@@ -250,7 +244,6 @@ impl SftpHandler for SftpSession {
         id: u32,
         handle: String,
     ) -> Result<Status, Self::Error> {
-        println!("close called");
         self.handles.remove(&handle);
         Ok(Status {
             id,
@@ -265,7 +258,6 @@ impl SftpHandler for SftpSession {
         id: u32,
         path: String,
     ) -> Result<Attrs, Self::Error> {
-        println!("stat called: {}", path);
         let path = format!("{}{}", self.jail_dir, path);
         match fs::metadata(path).await {
             Ok(metadata) => Ok(Attrs { id, attrs: FileAttributes {
@@ -284,7 +276,6 @@ impl SftpHandler for SftpSession {
         id: u32,
         path: String,
     ) -> Result<Attrs, Self::Error> {
-        println!("lstat called: {}", path);
         let path = format!("{}{}", self.jail_dir, path);
         match fs::symlink_metadata(path).await {
             Ok(metadata) => Ok(Attrs { id, attrs: FileAttributes {
@@ -304,7 +295,6 @@ impl SftpHandler for SftpSession {
         id: u32,
         handle: String,
     ) -> Result<Attrs, Self::Error> {
-        println!("fstat called: {}", handle);
         if let Handle::File(file) = self.handles.get(&handle).unwrap() {
             let metadata = file.metadata().await.unwrap();
             Ok(Attrs { id, attrs: FileAttributes {
@@ -327,7 +317,6 @@ impl SftpHandler for SftpSession {
         id: u32,
         filename: String,
     ) -> Result<Status, Self::Error> {
-        println!("remove called: {}", filename);
         let path = format!("{}{}", self.jail_dir, filename);
         match_expr!(fs::remove_file(path).await, "error removing file: {}", id)
     }
@@ -338,7 +327,6 @@ impl SftpHandler for SftpSession {
         path: String,
         _attrs: FileAttributes,
     ) -> Result<Status, Self::Error> {
-        println!("mkdir called: {}", path);
         let path = format!("{}{}", self.jail_dir, path);
         match_expr!(fs::create_dir(path).await, "error creating dir: {}", id)
     }
@@ -348,7 +336,6 @@ impl SftpHandler for SftpSession {
         id: u32,
         path: String,
     ) -> Result<Status, Self::Error> {
-        println!("rmdir called: {}", path);
         let path = format!("{}{}", self.jail_dir, path);
         match_expr!(fs::remove_dir(path).await, "error removing file: {}", id)
     }
@@ -359,7 +346,6 @@ impl SftpHandler for SftpSession {
         oldpath: String,
         newpath: String,
     ) -> Result<Status, Self::Error> {
-        println!("rename called from: {}, to: {}", oldpath, newpath);
         let oldpath = format!("{}{}", self.jail_dir, oldpath);
         let newpath = format!("{}{}", self.jail_dir, newpath);
         match_expr!(fs::rename(oldpath, newpath).await, "error renaming file: {}", id)

@@ -1,10 +1,10 @@
 mod sftp;
 mod config;
 
-use std::{fmt::format, io::ErrorKind, net::SocketAddr, sync::Arc, time::Duration};
+use std::{io::ErrorKind, net::SocketAddr, path::Path, sync::Arc, time::Duration};
 use bcrypt::{hash, DEFAULT_COST};
 use config::{Config, DriverConfig};
-use russh::{keys::ssh_key::{rand_core::OsRng, PublicKey}, server::{Auth, Handler as SshHandler, Msg, Server, Session}, Channel, ChannelId};
+use russh::{keys::ssh_key::PublicKey, server::{Auth, Handler as SshHandler, Msg, Server, Session}, Channel, ChannelId};
 use sftp::SftpSession;
 use sqlx::{mysql::MySqlPoolOptions, postgres::PgPoolOptions, sqlite::SqlitePoolOptions, MySql, Pool, Postgres, Row, Sqlite};
 use tokio::fs;
@@ -151,9 +151,6 @@ enum DBPool {
 
 #[tokio::main]
 async fn main() -> Result<(), sqlx::Error> {
-    // let config = Config::default();
-    // let toml = toml::to_string(&config).unwrap();
-    // println!("{}", toml);
 
     const CONFIG_PATH: &str = "/etc/flux-sftp/config.toml";
     let config: Arc<Config>;
@@ -195,11 +192,11 @@ async fn main() -> Result<(), sqlx::Error> {
         auth_rejection_time: Duration::from_secs(3),
         auth_rejection_time_initial: Some(Duration::from_secs(0)),
         keys: vec![
-            russh::keys::PrivateKey::random(&mut OsRng, russh::keys::Algorithm::Ed25519).unwrap(),
+            russh::keys::PrivateKey::read_openssh_file(Path::new(&config.general.private_key_file)).unwrap()
         ],
         ..Default::default()
     };
 
-    server.run_on_address(Arc::new(russh_config), (&config.general.listen_address as &str, config.general.port)).await.unwrap();
+    server.run_on_address(Arc::new(russh_config), (&config.general.listen_address as &str, config.general.port)).await?;
     Ok(())
 }

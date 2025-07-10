@@ -10,7 +10,8 @@ pub(crate) struct Config {
 pub(crate) struct GeneralConfig {
     pub(crate) listen_address: String,
     pub(crate) port: u16,
-    pub(crate) jail_dir: String
+    pub(crate) jail_dir: String,
+    pub(crate) private_key_file: String
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -61,7 +62,8 @@ impl Default for Config {
             general: GeneralConfig {
                 listen_address: String::from("0.0.0.0"),
                 port: 2222,
-                jail_dir: String::from("/srv/sftp")
+                jail_dir: String::from("/srv/sftp"),
+                private_key_file: String::from("~/.ssh/flux-sftp")
             },
             database: DBConfig {
                 driver: DriverConfig::Sqlite {

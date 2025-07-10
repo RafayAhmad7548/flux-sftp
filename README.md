@@ -8,13 +8,25 @@ SQLite, PostgreSQL and MYSQL are supported for the database, Authentication can 
 # Installation
 Start by downloading the tarball from the latest release from the [releases](https://forgejo.fluxgrid.pk/RafayAhmad/flux-sftp/releases), then extract the tarball as follows
 ```bash
-tar -xzvf flux-sftp.tar.gz -C /
+sudo tar -xzvf flux-sftp.tar.gz -C /
 ```
 ## Database
 before you can run the server you need to setup a database, SQLite, PostgreSQL and MYSQL are supported. get a database server running or simply create a sqlite database file and configure the server as mentioned in the [configuration section](#configuration).
 the database table should have a username field, and optionally public key and password for authentication, you can use either one authentication type or both, up to you. the public key field should not store the comment of the public key in the database, and for the passoword it should be hashed using bcrypt with default cost of 12.
 
 ***Note that registering users must be done manually by inserting records into the database as of now.***
+
+## User setup
+create a user named fluxsftp as follows
+```bash
+sudo useradd -r -s /usr/sbin/nologin fluxsftp
+```
+this user needs to own the jail directory, make sure to change ownership of the jail directory you have specified in the config
+```bash
+sudo chown -R fluxsftp:fluxsftp /srv/sftp
+```
+
+***When u register a new user make sure to create a directory for them in the jail directory and make sure it is owned by the fluxsftp user***
 
 ## Enable and Start
 after you have configured the database you can start the server as follows

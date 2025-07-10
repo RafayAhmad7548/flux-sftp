@@ -13,6 +13,7 @@ tar -xzvf flux-sftp.tar.gz -C /
 ## Database
 before you can run the server you need to setup a database, SQLite, PostgreSQL and MYSQL are supported. get a database server running or simply create a sqlite database file and configure the server as mentioned in the [configuration section](#configuration).
 the database table should have a username field, and optionally public key and password for authentication, you can use either one authentication type or both, up to you. the public key field should not store the comment of the public key in the database, and for the passoword it should be hashed using bcrypt with default cost of 12.
+
 ***Note that registering users must be done manually by inserting records into the database as of now.***
 
 ## Enable and Start

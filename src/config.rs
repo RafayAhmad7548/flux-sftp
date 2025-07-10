@@ -14,8 +14,16 @@ pub(crate) struct GeneralConfig {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+pub(crate) struct DBConfig {
+    #[serde(flatten)]
+    pub(crate) driver: DriverConfig,
+    #[serde(flatten)]
+    pub(crate) common: CommonConfig
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(tag = "driver")]
-pub(crate) enum DBConfig {
+pub(crate) enum DriverConfig {
     #[serde(rename = "sqlite")]
     Sqlite {
         path: String
@@ -38,6 +46,14 @@ pub(crate) enum DBConfig {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub(crate) struct CommonConfig {
+    pub(crate) table: String,
+    pub(crate) username_field: String,
+    pub(crate) public_key_field: Option<String>,
+    pub(crate) password_field: Option<String>
+}
+
 
 impl Default for Config {
     fn default() -> Self {
@@ -47,8 +63,16 @@ impl Default for Config {
                 port: 2222,
                 jail_dir: String::from("/srv/sftp")
             },
-            database: DBConfig::Sqlite {
-                path: String::from("/var/lib/flux-sftp/auth.db")
+            database: DBConfig {
+                driver: DriverConfig::Sqlite {
+                    path: String::from("/var/lib/flux-sftp/auth.db")
+                },
+                common: CommonConfig {
+                    table: String::from("users"),
+                    username_field: String::from("username"),
+                    public_key_field: Some(String::from("public_key")),
+                    password_field: None
+                } 
             }
         }
     }

@@ -1,21 +1,22 @@
 mod sftp;
 mod config;
 
-use std::{io::ErrorKind, net::SocketAddr, sync::Arc, time::Duration};
-use config::{Config, DBConfig};
+use std::{fmt::format, io::ErrorKind, net::SocketAddr, sync::Arc, time::Duration};
+use bcrypt::{hash, DEFAULT_COST};
+use config::{Config, DriverConfig};
 use russh::{keys::ssh_key::{rand_core::OsRng, PublicKey}, server::{Auth, Handler as SshHandler, Msg, Server, Session}, Channel, ChannelId};
 use sftp::SftpSession;
 use sqlx::{mysql::MySqlPoolOptions, postgres::PgPoolOptions, sqlite::SqlitePoolOptions, MySql, Pool, Postgres, Row, Sqlite};
 use tokio::fs;
 
-macro_rules! fetch_pub_key {
-    ($pool:ident, $query:literal, $user:ident) => {
+macro_rules! fetch_col {
+    ($col:ident, $pool:ident, $query:expr, $user:ident) => {
         {
-            let row_res = sqlx::query($query)
+            let row_res = sqlx::query(&$query)
                 .bind($user)
                 .fetch_one($pool).await;
             match row_res {
-                Ok(row) => Some(row.get("public_key")),
+                Ok(row) => Some(row.get($col as &str)),
                 Err(_) => None
             }
         }
@@ -47,35 +48,53 @@ struct SshSession {
 impl SshHandler for SshSession {
     type Error = russh::Error;
 
+    async fn auth_password(
+        &mut self,
+        user: &str,
+        password: &str,
+    ) -> Result<Auth, Self::Error> {
+        if let Some(password_field) = &self.config.database.common.password_field {
+            self.user = Some(user.to_string());
+            let offered_hash = match hash(password, DEFAULT_COST) {
+                Ok(hash) => hash,
+                Err(_) => return Ok(Auth::reject())
+            };
+            
+            let query = format!("SELECT {} FROM {} WHERE {} = ?", password_field, self.config.database.common.table, self.config.database.common.username_field);
+            let stored_password: String = match &*self.pool {
+                DBPool::Sqlite(pool) => fetch_col!(password_field, pool, query, user),
+                DBPool::Postgres(pool) => fetch_col!(password_field, pool, query.replace("?", "$1"), user),
+                DBPool::Mysql(pool) => fetch_col!(password_field, pool, query, user)
+            }.unwrap_or_default();
+
+            if offered_hash == stored_password { Ok(Auth::Accept) } else { Ok(Auth::reject()) }
+        }
+        else {
+            Ok(Auth::reject())
+        }
+    }
+
     async fn auth_publickey_offered(
         &mut self,
         user: &str,
         public_key: &PublicKey,
     ) -> Result<Auth, Self::Error> {
-        self.user = Some(user.to_string());
+        if let Some(public_key_field) = &self.config.database.common.public_key_field {
+            self.user = Some(user.to_string());
+            let offered_key = public_key.to_string();
 
-        let offered_key = public_key.to_string();
-        
-        let stored_key_opt: Option<String> = match &*self.pool {
-            DBPool::Sqlite(pool) => fetch_pub_key!(pool, "SELECT * FROM users WHERE username = ?", user),
-            DBPool::Postgres(pool) => fetch_pub_key!(pool, "SELECT * FROM users WHERE username = $1", user),
-            DBPool::Mysql(pool) => fetch_pub_key!(pool, "SELECT * FROM users WHERE username = ?", user)
-        };
-
-        if let Some(stored_key) = stored_key_opt {
-            if stored_key == offered_key {
-                Ok(Auth::Accept)
-            }
-            else {
-                println!("invalid key");
-                Ok(Auth::reject())
-            }
+            let query = format!("SELECT {} FROM {} WHERE {} = ?", public_key_field, self.config.database.common.table, self.config.database.common.username_field);
+            let stored_key: String = match &*self.pool {
+                DBPool::Sqlite(pool) => fetch_col!(public_key_field, pool, query, user),
+                DBPool::Postgres(pool) => fetch_col!(public_key_field, pool, query.replace("?", "$1"), user),
+                DBPool::Mysql(pool) => fetch_col!(public_key_field, pool, query, user)
+            }.unwrap_or_default();
+            
+            if offered_key == stored_key { Ok(Auth::Accept) } else { Ok(Auth::reject()) }
         }
         else {
-            println!("user not found");
             Ok(Auth::reject())
         }
-
     }
 
     async fn auth_publickey(
@@ -132,6 +151,9 @@ enum DBPool {
 
 #[tokio::main]
 async fn main() -> Result<(), sqlx::Error> {
+    // let config = Config::default();
+    // let toml = toml::to_string(&config).unwrap();
+    // println!("{}", toml);
 
     const CONFIG_PATH: &str = "/etc/flux-sftp/config.toml";
     let config: Arc<Config>;
@@ -155,16 +177,16 @@ async fn main() -> Result<(), sqlx::Error> {
         }
     }
 
-    let url = match &config.database {
-        DBConfig::Sqlite { path } => format!("sqlite:{}", path),
-        DBConfig::Postgres { host, port, user, password, dbname }  => format!("postgres://{}:{}@{}:{}/{}", user, password, host, port, dbname),
-        DBConfig::Mysql { host, port, user, password, dbname } => format!("mysql://{}:{}@{}:{}/{}", user, password, host, port, dbname),
+    let url = match &config.database.driver {
+        DriverConfig::Sqlite { path } => format!("sqlite:{}", path),
+        DriverConfig::Postgres { host, port, user, password, dbname }  => format!("postgres://{}:{}@{}:{}/{}", user, password, host, port, dbname),
+        DriverConfig::Mysql { host, port, user, password, dbname } => format!("mysql://{}:{}@{}:{}/{}", user, password, host, port, dbname),
     };
 
-    let pool = match &config.database {
-        DBConfig::Sqlite { .. } => DBPool::Sqlite(SqlitePoolOptions::new().max_connections(3).connect(&url).await?),
-        DBConfig::Postgres { .. } => DBPool::Postgres(PgPoolOptions::new().max_connections(3).connect(&url).await?),
-        DBConfig::Mysql { .. } => DBPool::Mysql(MySqlPoolOptions::new().max_connections(3).connect(&url).await?)
+    let pool = match &config.database.driver {
+        DriverConfig::Sqlite { .. } => DBPool::Sqlite(SqlitePoolOptions::new().max_connections(3).connect(&url).await?),
+        DriverConfig::Postgres { .. } => DBPool::Postgres(PgPoolOptions::new().max_connections(3).connect(&url).await?),
+        DriverConfig::Mysql { .. } => DBPool::Mysql(MySqlPoolOptions::new().max_connections(3).connect(&url).await?)
     };
 
     let mut server = SftpServer { pool: Arc::new(pool), config: config.clone() };
